@@ -1,0 +1,674 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Carrom Master - Online Game</title>
+
+<style>
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    background: linear-gradient(135deg,#111827,#312e81);
+    color: white;
+    min-height: 100vh;
+    text-align: center;
+    padding: 20px 10px;
+}
+
+header {
+    margin-bottom: 20px;
+}
+
+header h1 {
+    font-size: 32px;
+    color: #facc15;
+}
+
+header p {
+    color: #cbd5e1;
+    margin-top: 8px;
+}
+
+.game-container {
+    max-width: 750px;
+    margin: auto;
+    background: #1e293b;
+    padding: 18px;
+    border-radius: 20px;
+    box-shadow: 0 10px 35px #0008;
+}
+
+.scoreboard {
+    display: flex;
+    justify-content: space-around;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.score-box {
+    background: #334155;
+    padding: 12px;
+    border-radius: 12px;
+    flex: 1;
+}
+
+.score-box h3 {
+    color: #facc15;
+    font-size: 15px;
+}
+
+.score-box p {
+    font-size: 25px;
+    font-weight: bold;
+    margin-top: 5px;
+}
+
+#turn {
+    color: #facc15;
+    font-weight: bold;
+    margin: 12px;
+}
+
+.board-wrapper {
+    width: 100%;
+    max-width: 600px;
+    margin: auto;
+    aspect-ratio: 1;
+    position: relative;
+}
+
+canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    border-radius: 8px;
+    touch-action: none;
+    cursor: crosshair;
+}
+
+.controls {
+    margin-top: 18px;
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+button {
+    border: none;
+    padding: 12px 20px;
+    border-radius: 10px;
+    background: #eab308;
+    color: #111827;
+    font-weight: bold;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+button:hover {
+    background: #facc15;
+}
+
+.instructions {
+    margin-top: 20px;
+    color: #cbd5e1;
+    font-size: 13px;
+    line-height: 1.8;
+}
+
+footer {
+    margin-top: 20px;
+    color: #94a3b8;
+    font-size: 12px;
+}
+</style>
+</head>
+
+<body>
+
+<header>
+    <h1>🎯 CARROM MASTER</h1>
+    <p>Play Carrom with Your Friends!</p>
+</header>
+
+<div class="game-container">
+
+    <div class="scoreboard">
+
+        <div class="score-box">
+            <h3>PLAYER 1</h3>
+            <p id="score1">0</p>
+        </div>
+
+        <div class="score-box">
+            <h3>PLAYER 2</h3>
+            <p id="score2">0</p>
+        </div>
+
+    </div>
+
+    <div id="turn">Player 1's Turn</div>
+
+    <div class="board-wrapper">
+        <canvas id="board" width="800" height="800"></canvas>
+    </div>
+
+    <div class="controls">
+        <button onclick="resetGame()">🔄 New Game</button>
+        <button onclick="resetStriker()">🎯 Reset Striker</button>
+    </div>
+
+    <div class="instructions">
+        <b>How to Play?</b><br>
+        1. Drag the striker to aim.<br>
+        2. Pull backward and release to shoot.<br>
+        3. Put coins into the corner pockets.<br>
+        4. Players take alternate turns.
+    </div>
+
+</div>
+
+<footer>
+    © 2026 Carrom Master | Made with HTML, CSS & JavaScript
+</footer>
+
+<script>
+
+const canvas = document.getElementById("board");
+const ctx = canvas.getContext("2d");
+
+const W = 800;
+const H = 800;
+
+const center = 400;
+const innerMin = 120;
+const innerMax = 680;
+
+const pocketRadius = 32;
+const coinRadius = 17;
+const strikerRadius = 23;
+
+let coins = [];
+let striker;
+let player = 1;
+let scores = [0, 0];
+
+let dragging = false;
+let aim = null;
+let moving = false;
+let shotMade = false;
+let pocketedThisShot = false;
+
+let gameOver = false;
+
+const pockets = [
+    [100,100],
+    [700,100],
+    [100,700],
+    [700,700]
+];
+
+function createCoin(x,y,color,type="coin") {
+    return {
+        x,y,
+        vx:0,
+        vy:0,
+        r:coinRadius,
+        color,
+        type,
+        active:true
+    };
+}
+
+function createCoins() {
+
+    coins = [];
+
+    coins.push(createCoin(400,400,"#dc2626","queen"));
+
+    const positions = [
+        [400,366],[400,434],
+        [366,400],[434,400],
+        [366,366],[434,434],
+        [434,366],[366,434],
+        [400,332],[400,468],
+        [332,400],[468,400]
+    ];
+
+    positions.forEach((pos,i)=>{
+        coins.push(createCoin(
+            pos[0],pos[1],
+            i % 2 === 0 ? "#f8fafc" : "#171717"
+        ));
+    });
+}
+
+function strikerStart() {
+    return {
+        x:400,
+        y:player === 1 ? 610 : 190,
+        vx:0,
+        vy:0,
+        r:strikerRadius,
+        color:"#2563eb",
+        active:true
+    };
+}
+
+function resetGame() {
+    player = 1;
+    scores = [0,0];
+    gameOver = false;
+    shotMade = false;
+    pocketedThisShot = false;
+    createCoins();
+    striker = strikerStart();
+    updateUI();
+    draw();
+}
+
+function resetStriker() {
+    if (!moving && !gameOver) {
+        striker = strikerStart();
+        draw();
+    }
+}
+
+function updateUI() {
+    document.getElementById("score1").textContent = scores[0];
+    document.getElementById("score2").textContent = scores[1];
+
+    document.getElementById("turn").textContent =
+        gameOver ? "Game Over!" : "Player " + player + "'s Turn";
+}
+
+function drawBoard() {
+
+    // Wooden board
+    ctx.fillStyle = "#c08442";
+    ctx.fillRect(0,0,W,H);
+
+    // Wood border
+    ctx.strokeStyle = "#78350f";
+    ctx.lineWidth = 28;
+    ctx.strokeRect(30,30,740,740);
+
+    // Playing surface
+    ctx.fillStyle = "#f5deb3";
+    ctx.fillRect(80,80,640,640);
+
+    // Inner border
+    ctx.strokeStyle = "#92400e";
+    ctx.lineWidth = 8;
+    ctx.strokeRect(115,115,570,570);
+
+    // Center circle
+    ctx.beginPath();
+    ctx.arc(400,400,95,0,Math.PI*2);
+    ctx.strokeStyle = "#92400e";
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(400,400,55,0,Math.PI*2);
+    ctx.stroke();
+
+    // Baselines
+    ctx.strokeStyle = "#b45309";
+    ctx.lineWidth = 4;
+
+    [190,610].forEach(y=>{
+        ctx.beginPath();
+        ctx.moveTo(180,y);
+        ctx.lineTo(620,y);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(180,y-22);
+        ctx.lineTo(620,y-22);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(180,y,12,0,Math.PI*2);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(620,y,12,0,Math.PI*2);
+        ctx.stroke();
+    });
+
+    // Pockets
+    pockets.forEach(([x,y])=>{
+        ctx.beginPath();
+        ctx.arc(x,y,pocketRadius,0,Math.PI*2);
+        ctx.fillStyle="#111827";
+        ctx.fill();
+
+        ctx.strokeStyle="#78350f";
+        ctx.lineWidth=5;
+        ctx.stroke();
+    });
+
+    // Center decoration
+    ctx.fillStyle="#dc2626";
+    ctx.beginPath();
+    ctx.arc(400,400,8,0,Math.PI*2);
+    ctx.fill();
+}
+
+function drawPiece(piece) {
+
+    if (!piece.active) return;
+
+    ctx.save();
+
+    ctx.beginPath();
+    ctx.arc(piece.x,piece.y,piece.r,0,Math.PI*2);
+    ctx.fillStyle=piece.color;
+    ctx.fill();
+
+    ctx.lineWidth=3;
+    ctx.strokeStyle="#78350f";
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(
+        piece.x,piece.y,
+        piece.r*0.65,
+        0,Math.PI*2
+    );
+    ctx.strokeStyle="rgba(120,53,15,0.45)";
+    ctx.lineWidth=2;
+    ctx.stroke();
+
+    if(piece.type==="queen") {
+        ctx.fillStyle="#fff";
+        ctx.font="bold 17px Arial";
+        ctx.textAlign="center";
+        ctx.textBaseline="middle";
+        ctx.fillText("Q",piece.x,piece.y);
+    }
+
+    ctx.restore();
+}
+
+function drawAim() {
+
+    if(!dragging || !aim) return;
+
+    ctx.beginPath();
+    ctx.moveTo(striker.x,striker.y);
+    ctx.lineTo(aim.x,aim.y);
+    ctx.strokeStyle="#2563eb";
+    ctx.lineWidth=4;
+    ctx.setLineDash([10,8]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.beginPath();
+    ctx.arc(aim.x,aim.y,7,0,Math.PI*2);
+    ctx.fillStyle="#2563eb";
+    ctx.fill();
+}
+
+function draw() {
+
+    ctx.clearRect(0,0,W,H);
+
+    drawBoard();
+
+    coins.forEach(drawPiece);
+
+    if(striker && striker.active) {
+        drawPiece(striker);
+    }
+
+    drawAim();
+}
+
+function getPointerPosition(e) {
+
+    const rect=canvas.getBoundingClientRect();
+
+    return {
+        x:(e.clientX-rect.left)*(W/rect.width),
+        y:(e.clientY-rect.top)*(H/rect.height)
+    };
+}
+
+canvas.addEventListener("pointerdown",e=>{
+
+    if(moving || gameOver || !striker.active) return;
+
+    const p=getPointerPosition(e);
+
+    const dx=p.x-striker.x;
+    const dy=p.y-striker.y;
+
+    if(Math.hypot(dx,dy)<striker.r+15) {
+
+        dragging=true;
+        aim=p;
+        canvas.setPointerCapture(e.pointerId);
+        draw();
+    }
+});
+
+canvas.addEventListener("pointermove",e=>{
+
+    if(!dragging) return;
+
+    aim=getPointerPosition(e);
+    draw();
+});
+
+canvas.addEventListener("pointerup",e=>{
+
+    if(!dragging) return;
+
+    const p=getPointerPosition(e);
+
+    dragging=false;
+    aim=null;
+
+    let dx=striker.x-p.x;
+    let dy=striker.y-p.y;
+
+    const distance=Math.hypot(dx,dy);
+
+    if(distance>8) {
+
+        const power=Math.min(distance,130)*0.12;
+
+        striker.vx=(dx/distance)*power;
+        striker.vy=(dy/distance)*power;
+
+        moving=true;
+        shotMade=true;
+        pocketedThisShot=false;
+    }
+
+    draw();
+});
+
+function collide(a,b) {
+
+    if(!a.active || !b.active) return;
+
+    let dx=b.x-a.x;
+    let dy=b.y-a.y;
+
+    let distance=Math.hypot(dx,dy);
+
+    const minDistance=a.r+b.r;
+
+    if(distance===0) {
+        dx=1;
+        distance=1;
+    }
+
+    if(distance<minDistance) {
+
+        const nx=dx/distance;
+        const ny=dy/distance;
+
+        const overlap=minDistance-distance;
+
+        a.x-=nx*overlap/2;
+        a.y-=ny*overlap/2;
+
+        b.x+=nx*overlap/2;
+        b.y+=ny*overlap/2;
+
+        const relativeVelocity=
+            (b.vx-a.vx)*nx+(b.vy-a.vy)*ny;
+
+        if(relativeVelocity<0) {
+
+            const impulse=-relativeVelocity*0.88;
+
+            a.vx-=impulse*nx;
+            a.vy-=impulse*ny;
+
+            b.vx+=impulse*nx;
+            b.vy+=impulse*ny;
+        }
+    }
+}
+
+function checkPocket(piece,isStriker=false) {
+
+    if(!piece.active) return;
+
+    for(const [px,py] of pockets) {
+
+        const d=Math.hypot(piece.x-px,piece.y-py);
+
+        if(d<pocketRadius+piece.r*0.2) {
+
+            piece.active=false;
+
+            if(isStriker) {
+                pocketedThisShot=true;
+            } else {
+
+                scores[player-1] +=
+                    piece.type==="queen" ? 3 : 1;
+
+            }
+
+            updateUI();
+            break;
+        }
+    }
+}
+
+function physics() {
+
+    const allPieces=[...coins,striker];
+
+    allPieces.forEach(piece=>{
+
+        if(!piece.active) return;
+
+        piece.x+=piece.vx;
+        piece.y+=piece.vy;
+
+        piece.vx*=0.986;
+        piece.vy*=0.986;
+
+        if(Math.abs(piece.vx)<0.025) piece.vx=0;
+        if(Math.abs(piece.vy)<0.025) piece.vy=0;
+
+        checkPocket(piece,piece===striker);
+
+        if(!piece.active) return;
+
+        // Wall collisions
+        if(piece.x-piece.r<innerMin) {
+            piece.x=innerMin+piece.r;
+            piece.vx=Math.abs(piece.vx)*0.85;
+        }
+
+        if(piece.x+piece.r>innerMax) {
+            piece.x=innerMax-piece.r;
+            piece.vx=-Math.abs(piece.vx)*0.85;
+        }
+
+        if(piece.y-piece.r<innerMin) {
+            piece.y=innerMin+piece.r;
+            piece.vy=Math.abs(piece.vy)*0.85;
+        }
+
+        if(piece.y+piece.r>innerMax) {
+            piece.y=innerMax-piece.r;
+            piece.vy=-Math.abs(piece.vy)*0.85;
+        }
+
+    });
+
+    // Coin collisions
+    for(let i=0;i<allPieces.length;i++) {
+        for(let j=i+1;j<allPieces.length;j++) {
+            collide(allPieces[i],allPieces[j]);
+        }
+    }
+
+    const stillMoving=allPieces.some(piece=>
+        piece.active &&
+        (Math.abs(piece.vx)>0.03 ||
+         Math.abs(piece.vy)>0.03)
+    );
+
+    if(!stillMoving && moving) {
+
+        moving=false;
+
+        if(shotMade) {
+
+            if(!pocketedThisShot) {
+                player=player===1?2:1;
+            }
+
+            shotMade=false;
+
+            if(!striker.active) {
+                striker=strikerStart();
+            } else {
+                striker=strikerStart();
+            }
+
+            if(coins.every(c=>!c.active)) {
+                gameOver=true;
+            }
+
+            updateUI();
+        }
+    }
+}
+
+function gameLoop() {
+
+    if(moving) {
+        physics();
+    }
+
+    draw();
+
+    requestAnimationFrame(gameLoop);
+}
+
+resetGame();
+gameLoop();
+
+</script>
+
+</body>
+</html>
